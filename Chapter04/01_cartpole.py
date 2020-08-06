@@ -76,7 +76,7 @@ def filter_batch(batch, percentile):
 
 if __name__ == "__main__":
     env = gym.make("CartPole-v0")
-    # env = gym.wrappers.Monitor(env, directory="mon", force=True)
+    # env = gym.wrappers.Monitor(env, directory="mon", force=True, video_callable=lambda episode_id: episode_id%BATCH_SIZE==0)
     obs_size = env.observation_space.shape[0]
     n_actions = env.action_space.n
 
@@ -101,3 +101,5 @@ if __name__ == "__main__":
             print("Solved!")
             break
     writer.close()
+    env.close()
+    env.env.close()
