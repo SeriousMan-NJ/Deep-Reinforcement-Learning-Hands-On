@@ -2,6 +2,7 @@
 Monte-Carlo Tree Search
 """
 import math as m
+import time
 import numpy as np
 
 from lib import allocation, model, utils
@@ -120,7 +121,10 @@ class MCTS:
         # do expansion of nodes
         if len(expand_queue) > 0:
             batch_v = model.state_list_to_batch(expand_states, device)
+            start = time.time()
             logits_v, values_v = net(batch_v)
+            end = time.time()
+            print(end - start)
             probs_v = F.softmax(logits_v, dim=1)
             values = values_v.data.cpu().numpy()[:, 0]
             probs = probs_v.data.cpu().numpy()

@@ -72,7 +72,7 @@ def state_list_to_batch(state_list, device="cpu"):
     :param state_lists: list of 'list states'
     :return Variable with observations
     """
-    return next(iter(DataLoader(list(map(lambda x: _convert_state(x), state_list)), batch_size=len(state_list)))) # TODO
+    return next(iter(DataLoader(list(map(lambda x: _convert_state(x), state_list)), batch_size=len(state_list)))).to(device) # TODO
 
 def convert_action(G, action):
     nid = allocation.get_next_node_id(G)
