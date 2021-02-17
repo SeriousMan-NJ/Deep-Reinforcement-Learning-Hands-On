@@ -3,221 +3,181 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn import GCNConv, MFConv, global_add_pool, global_mean_pool
+from torch_geometric.utils import from_networkx
+from torch_geometric.data import Data, DataLoader
+import math
 
-from lib import game, mcts
+from lib import allocation, mcts, utils
 
-
-OBS_SHAPE = (2, game.GAME_ROWS, game.GAME_COLS)
-NUM_FILTERS = 64
-
+OBS_SHAPE = (allocation.NUM_NODE_FEATURES, allocation.NUM_NODE_FEATURES, allocation.NUM_NODE_FEATURES)
+NUM_FILTERS = allocation.NUM_NODE_FEATURES
 
 class Net(nn.Module):
     def __init__(self, input_shape, actions_n):
         super(Net, self).__init__()
 
-        self.conv_in = nn.Sequential(
-            nn.Conv2d(input_shape[0], NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU()
-        )
+        # TODO: Layer
+        self.conv_in = GCNConv(input_shape[0], NUM_FILTERS)
+        self.conv_1 = GCNConv(NUM_FILTERS, NUM_FILTERS)
 
-        # layers with residual
-        self.conv_1 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU()
-        )
-        self.conv_2 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU()
-        )
-        self.conv_3 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU()
-        )
-        self.conv_4 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU()
-        )
-        self.conv_5 = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, NUM_FILTERS, kernel_size=3, padding=1),
-            nn.BatchNorm2d(NUM_FILTERS),
-            nn.LeakyReLU()
-        )
+        self.conv_val = MFConv(NUM_FILTERS, 1)
+        self.conv_policy = GCNConv(NUM_FILTERS, allocation.NUM_PHYS)
 
-        body_out_shape = (NUM_FILTERS, ) + input_shape[1:]
-
-        # value head
-        self.conv_val = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, 1, kernel_size=1),
-            nn.BatchNorm2d(1),
-            nn.LeakyReLU()
-        )
-        conv_val_size = self._get_conv_val_size(body_out_shape)
-        self.value = nn.Sequential(
-            nn.Linear(conv_val_size, 20),
-            nn.LeakyReLU(),
-            nn.Linear(20, 1),
-            nn.Tanh()
-        )
-
-        # policy head
-        self.conv_policy = nn.Sequential(
-            nn.Conv2d(NUM_FILTERS, 2, kernel_size=1),
-            nn.BatchNorm2d(2),
-            nn.LeakyReLU()
-        )
-        conv_policy_size = self._get_conv_policy_size(body_out_shape)
-        self.policy = nn.Sequential(
-            nn.Linear(conv_policy_size, actions_n)
-        )
-
-    def _get_conv_val_size(self, shape):
-        o = self.conv_val(torch.zeros(1, *shape))
-        return int(np.prod(o.size()))
-
-    def _get_conv_policy_size(self, shape):
-        o = self.conv_policy(torch.zeros(1, *shape))
-        return int(np.prod(o.size()))
-
-    def forward(self, x):
-        batch_size = x.size()[0]
-        v = self.conv_in(x)
-        v = v + self.conv_1(v)
-        v = v + self.conv_2(v)
-        v = v + self.conv_3(v)
-        v = v + self.conv_4(v)
-        v = v + self.conv_5(v)
-        val = self.conv_val(v)
-        val = self.value(val.view(batch_size, -1))
-        pol = self.conv_policy(v)
-        pol = self.policy(pol.view(batch_size, -1))
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+        x = self.conv_in(x, edge_index)
+        x = self.conv_1(x, edge_index)
+        val = self.conv_val(x, edge_index)
+        val = global_add_pool(val, data.batch)
+        pol = self.conv_policy(x, edge_index)
+        pol = global_mean_pool(pol, data.batch)
         return pol, val
 
-
-def _encode_list_state(dest_np, state_list, who_move):
+def _convert_state(state):
     """
     In-place encodes list state into the zero numpy array
     :param dest_np: dest array, expected to be zero
-    :param state_list: state of the game in the list form
-    :param who_move: player index (game.PLAYER_WHITE or game.PLAYER_BLACK) who to move
+    :param state: state
     """
-    assert dest_np.shape == OBS_SHAPE
-
-    for col_idx, col in enumerate(state_list):
-        for rev_row_idx, cell in enumerate(col):
-            row_idx = game.GAME_ROWS - rev_row_idx - 1
-            if cell == who_move:
-                dest_np[0, row_idx, col_idx] = 1.0
+    # assert dest_np.shape == OBS_SHAPE
+    G = state
+    edge_index = []
+    x = []
+    for N in G.nodes:
+        for n in G.neighbors(N):
+            edge_index.append([N, n])
+        nf = [0] * allocation.NUM_NODE_FEATURES
+        nf[0] = G.nodes[N]['isAllocated']
+        for i in range(allocation.NUM_PHYS):
+            reg = utils.renumber_reg(G.nodes[N]['allocation'])
+            if reg == i:
+                nf[1 + i] = 1
             else:
-                dest_np[1, row_idx, col_idx] = 1.0
+                nf[1 + i] = 0
+        nf[1 + allocation.NUM_PHYS] = G.nodes[N]['weight']
+        nf[2 + allocation.NUM_PHYS] = G.nodes[N]['size']
+        nf[3 + allocation.NUM_PHYS] = G.nodes[N]['isPhysReg']
+        nf[4 + allocation.NUM_PHYS] = G.nodes[N]['isIntReg']
+        nf[5 + allocation.NUM_PHYS] = G.nodes[N]['isFloatReg']
+        x.append(nf)
+    x = torch.tensor(x, dtype=torch.float32)
+    edge_index = torch.tensor(np.transpose(edge_index), dtype=torch.long)
+    return Data(x=x, edge_index=edge_index)
 
-
-def state_lists_to_batch(state_lists, who_moves_lists, device="cpu"):
+def state_list_to_batch(state_list, device="cpu"):
     """
     Convert list of list states to batch for network
     :param state_lists: list of 'list states'
-    :param who_moves_lists: list of player index who moves
     :return Variable with observations
     """
-    assert isinstance(state_lists, list)
-    batch_size = len(state_lists)
-    batch = np.zeros((batch_size,) + OBS_SHAPE, dtype=np.float32)
-    for idx, (state, who_move) in enumerate(zip(state_lists, who_moves_lists)):
-        _encode_list_state(batch[idx], state, who_move)
-    return torch.tensor(batch).to(device)
+    return next(iter(DataLoader(list(map(lambda x: _convert_state(x), state_list)), batch_size=len(state_list)))) # TODO
 
+def convert_action(G, action):
+    nid = allocation.get_next_node_id(G)
+    N = G.nodes(data=True)[nid]
 
-# def play_game(net1, net2, cuda=False):
-#     cur_player = 0
-#     state = game.INITIAL_STATE
-#     nets = [net1, net2]
-#
-#     while True:
-#         state_list = game.decode_binary(state)
-#         batch_v = state_lists_to_batch([state_list], [cur_player], cuda)
-#         logits_v, _ = nets[cur_player](batch_v)
-#         probs_v = F.softmax(logits_v, dim=1)
-#         probs = probs_v[0].data.cpu().numpy()
-#         while True:
-#             action = np.random.choice(game.GAME_COLS, p=probs)
-#             if action in game.possible_moves(state):
-#                 break
-#         state, won = game.move(state, action, cur_player)
-#         if won:
-#             return 1.0 if cur_player == 0 else -1.0
-#         # check for the draw state
-#         if len(game.possible_moves(state)) == 0:
-#             return 0.0
-#         cur_player = 1 - cur_player
-#
+    if len(N['allocOrder']) == 0:
+        return -1
 
+    found = False
+    for r in N['allocOrder']:
+        if utils.renumber_reg(r) == action:
+            action = r
+            found = True
+            break
+    assert found
+    return action
 
-def play_game(mcts_stores, replay_buffer, net1, net2, steps_before_tau_0, mcts_searches, mcts_batch_size,
-              net1_plays_first=None, device="cpu"):
+def play_game(mcts_store, replay_buffer, net1, net2, steps_before_tau_0, mcts_searches, mcts_batch_size, device="cpu", isTest=False):
     """
-    Play one single game, memorizing transitions into the replay buffer
-    :param mcts_stores: could be None or single MCTS or two MCTSes for individual net
+    Play one single allocation, memorizing transitions into the replay buffer
+    :param mcts_store: could be None or single MCTS or two MCTSes for individual net
     :param replay_buffer: queue with (state, probs, values), if None, nothing is stored
-    :param net1: player1
-    :param net2: player2
-    :return: value for the game in respect to player1 (+1 if p1 won, -1 if lost, 0 if draw)
+    :param net: allocator
+    :return: value for the allocation in respect to allocator (+1 if allocator won, -1 if lost, 0 if draw)
     """
     assert isinstance(replay_buffer, (collections.deque, type(None)))
-    assert isinstance(mcts_stores, (mcts.MCTS, type(None), list))
+    assert isinstance(mcts_store, (mcts.MCTS, type(None), list))
     assert isinstance(net1, Net)
     assert isinstance(net2, Net)
     assert isinstance(steps_before_tau_0, int) and steps_before_tau_0 >= 0
     assert isinstance(mcts_searches, int) and mcts_searches > 0
     assert isinstance(mcts_batch_size, int) and mcts_batch_size > 0
 
-    if mcts_stores is None:
-        mcts_stores = [mcts.MCTS(), mcts.MCTS()]
-    elif isinstance(mcts_stores, mcts.MCTS):
-        mcts_stores = [mcts_stores, mcts_stores]
+    if mcts_store is None:
+        mcts_store = [mcts.MCTS(), mcts.MCTS()]
 
-    state = game.INITIAL_STATE
-    nets = [net1, net2]
-    if net1_plays_first is None:
-        cur_player = np.random.choice(2)
-    else:
-        cur_player = 0 if net1_plays_first else 1
+    states = [allocation.INITIAL_STATE, allocation.INITIAL_STATE] # TODO
+
     step = 0
     tau = 1 if steps_before_tau_0 > 0 else 0
-    game_history = []
+    tau = 10000 if isTest else tau
+    allocation_history = []
 
-    result = None
-    net1_result = None
+    results = [None, None]
 
-    while result is None:
-        mcts_stores[cur_player].search_batch(mcts_searches, mcts_batch_size, state,
-                                             cur_player, nets[cur_player], device=device)
-        probs, _ = mcts_stores[cur_player].get_policy_value(state, tau=tau)
-        game_history.append((state, cur_player, probs))
-        action = np.random.choice(game.GAME_COLS, p=probs)
-        if action not in game.possible_moves(state):
-            print("Impossible action selected")
-        state, won = game.move(state, action, cur_player)
-        if won:
-            result = 1
-            net1_result = 1 if cur_player == 0 else -1
-            break
-        cur_player = 1-cur_player
-        # check the draw case
-        if len(game.possible_moves(state)) == 0:
-            result = 0
-            net1_result = 0
+    # get spill cost of net1
+    while results[0] is None:
+        mcts_store[0].search_batch(mcts_searches, mcts_batch_size, states[0], net1, device=device)
+        probs, _ = mcts_store[0].get_policy_value(states[0], tau=tau)
+        allocation_history.append((states[0], probs))
+        action = np.random.choice(allocation.NUM_PHYS, p=probs)
+        if len(allocation.possible_moves(states[0])) > 0:
+            if action not in allocation.possible_moves(states[0]):
+                print("debug")
+                print(action)
+                print(allocation.possible_moves(states[0]))
+            assert action in allocation.possible_moves(states[0])
+        else:
+            action = 0
+
+        # convert
+        action = convert_action(states[0], action)
+
+        states[0], spill_costs = allocation.move(states[0], action)
+        if spill_costs >= 0:
+            results[0] = spill_costs
             break
         step += 1
         if step >= steps_before_tau_0:
             tau = 0
 
-    if replay_buffer is not None:
-        for state, cur_player, probs in reversed(game_history):
-            replay_buffer.append((state, cur_player, probs, result))
-            result = -result
+    step = 0
+    allocation_history = []
 
-    return net1_result, step
+    # get spill cost of net2
+    while results[1] is None:
+        mcts_store[1].search_batch(mcts_searches, mcts_batch_size, states[1], net2, device=device)
+        probs, _ = mcts_store[1].get_policy_value(states[1], tau=tau)
+        allocation_history.append((states[1], probs))
+        action = np.random.choice(allocation.NUM_PHYS, p=probs)
+        if len(allocation.possible_moves(states[1])) > 0:
+            assert action in allocation.possible_moves(states[1])
+        else:
+            action = 0
+
+        # convert
+        action = convert_action(states[1], action)
+
+        states[1], spill_costs = allocation.move(states[1], action)
+        if spill_costs >= 0:
+            results[1] = spill_costs
+            break
+        step += 1
+        if step >= steps_before_tau_0:
+            tau = 0
+
+    result = None
+    if math.isclose(results[0], results[1]):
+        result = 0
+    elif results[0] < results[1]:
+        result = 1
+    else:
+        result = -1
+
+    if replay_buffer is not None:
+        for state, probs in reversed(allocation_history):
+            replay_buffer.append((state, probs, result))
+    return result, step
