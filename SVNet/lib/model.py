@@ -12,27 +12,126 @@ import math
 from lib import allocation, mcts, utils
 
 OBS_SHAPE = (allocation.NUM_NODE_FEATURES, allocation.NUM_NODE_FEATURES, allocation.NUM_NODE_FEATURES)
-NUM_FILTERS = allocation.NUM_NODE_FEATURES
+NUM_FILTERS = 32
 
 class Net(nn.Module):
     def __init__(self, input_shape, actions_n):
         super(Net, self).__init__()
 
         # TODO: Layer
-        self.conv_in = GCNConv(input_shape[0], NUM_FILTERS)
+        self.conv_0 = GCNConv(input_shape[0], NUM_FILTERS)
         self.conv_1 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_2 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_3 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_4 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_5 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_6 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_7 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_8 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_9 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_10 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_11 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_12 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_13 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_14 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_15 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_16 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_17 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_18 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_19 = GCNConv(NUM_FILTERS, NUM_FILTERS)
 
-        self.conv_val = MFConv(NUM_FILTERS, 1)
-        self.conv_policy = GCNConv(NUM_FILTERS, allocation.NUM_PHYS)
+        self.conv_val = MFConv(NUM_FILTERS, NUM_FILTERS)
+        self.value = nn.Sequential(
+            nn.Linear(NUM_FILTERS, 20),
+            nn.ReLU(),
+            nn.Linear(20, 1),
+            nn.Tanh()
+        )
+        self.conv_policy = GCNConv(NUM_FILTERS, 128)
+        self.policy = nn.Sequential(
+            nn.Linear(128, allocation.NUM_PHYS),
+            nn.ReLU(),
+            nn.Linear(allocation.NUM_PHYS, allocation.NUM_PHYS),
+            nn.ReLU()
+        )
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
-        x = self.conv_in(x, edge_index)
+        batch_size = x.size()[0]
+        x = self.conv_0(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
         x = self.conv_1(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_2(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_3(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_4(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        # x = self.conv_5(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_6(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_7(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_8(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_9(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_10(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_11(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_12(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_13(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_14(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_15(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_16(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_17(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_18(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+        # x = self.conv_19(x, edge_index)
+        # x = F.relu(x)
+        # x = F.dropout(x, training=self.training)
+
         val = self.conv_val(x, edge_index)
-        val = global_add_pool(val, data.batch)
+        val = F.relu(val)
+        val = F.dropout(val, training=self.training)
+        val = self.value(val.view(batch_size, -1))
+        # val = F.relu(val)
+        # val = global_add_pool(val, data.batch)
+
         pol = self.conv_policy(x, edge_index)
-        pol = global_mean_pool(pol, data.batch)
+        pol = F.relu(pol)
+        pol = F.dropout(pol, training=self.training)
+        pol = self.policy(pol.view(batch_size, -1))
+        # pol = global_mean_pool(pol, data.batch)
+
         return pol, val
 
 def _convert_state(state):
