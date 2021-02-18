@@ -80,7 +80,7 @@ class MCTS:
             start = time.time()
             cur_state, spill_costs = allocation.move(cur_state, action)
             end = time.time()
-            print(f"move: ".format(end - start))
+            print("move: {}".format(end - start))
             cur_state_int = allocation.state_to_int(cur_state)
 
             if spill_costs >= 0:
