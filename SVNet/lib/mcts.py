@@ -107,10 +107,10 @@ class MCTS:
         expand_queue = []
         planned = set()
         for _ in range(count):
-            start = time.time()
+            # start = time.time()
             value, leaf_state, states, actions = self.find_leaf(state)
-            end = time.time()
-            print("find_leaf: {}".format(end - start))
+            # end = time.time()
+            # print("find_leaf: {}".format(end - start))
             leaf_state_int = allocation.state_to_int(leaf_state)
             if leaf_state_int not in self.visited_states:
                 self.visited_states.add(leaf_state_int)
@@ -125,10 +125,10 @@ class MCTS:
         # do expansion of nodes
         if len(expand_queue) > 0:
             batch_v = model.state_list_to_batch(expand_states, device)
-            start = time.time()
+            # start = time.time()
             logits_v, values_v = net(batch_v)
-            end = time.time()
-            print("net: {}".format(end - start))
+            # end = time.time()
+            # print("net: {}".format(end - start))
             probs_v = F.softmax(logits_v, dim=1)
             values = values_v.data.cpu().numpy()[:, 0]
             probs = probs_v.data.cpu().numpy()

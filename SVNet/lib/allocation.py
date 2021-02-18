@@ -5,11 +5,12 @@ import numpy as np
 from lib import utils
 import math
 import copy
+import time
 
 NUM_PHYS = len(utils.X86.F_ALL)
-# isAllocated, weight, size, isPhysReg, isIntReg, isFloatReg
+# isAllocated, weight, size, isPhysReg, isIntReg, isFloatReg, isNext
 # allocation: NUM_PHYS
-NUM_NODE_FEATURES = 6 + NUM_PHYS
+NUM_NODE_FEATURES = 7 + NUM_PHYS
 
 WIN = 0
 LOSE = 1
@@ -21,7 +22,7 @@ bound = 0
 def set_node_features(G, filepath):
     global bound # TODO
     if filepath is None:
-        filepath = "/Users/ywshin/development/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/nf.txt" # TODO
+        filepath = "/Users/ywshin/development/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/nf_bicubicKernel.txt" # TODO
     with open(filepath, "r") as f:
         lines = f.readlines()
         for l in lines:
@@ -34,9 +35,10 @@ def set_node_features(G, filepath):
                 bound += 1
             G.add_node(NodeMap[nid],
                 nid=nid,
+                isNext=0,
                 isAllocated = int(features[1]),
                 allocation = int(features[2]),
-                weight = float(features[3]),
+                weight = 100 if float(features[3]) > 100 else float(features[3]), # TODO
                 size = int(features[4]),
                 isPhysReg = int(features[5]),
                 isIntReg = int(features[6]),
@@ -46,7 +48,7 @@ def set_node_features(G, filepath):
 
 def add_edges(G, filepath):
     if filepath is None:
-        filepath = "/Users/ywshin/development/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/if.txt" # TODO
+        filepath = "/Users/ywshin/development/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/if_bicubicKernel.txt" # TODO
     with open(filepath, "r") as f:
         lines = f.readlines()
         for l in lines:
@@ -74,6 +76,9 @@ def get_initial_state():
     G = nx.Graph()
     set_node_features(G, None)
     add_edges(G, None)
+    nid = get_next_node_id(G)
+    G.nnid = nid
+    G.nodes[nid]['isNext'] = 1
     return G
 
 def state_to_int(G):
@@ -105,6 +110,26 @@ def _get_spill_costs(G):
             spill_costs += attr['weight']
     return spill_costs
 
+def deepcopy(state):
+    state_new = copy.deepcopy(state)
+    return state_new
+
+def deepcopy_light(state):
+    state_new = state.copy()
+    # state_new.nnid = state.nnid
+    for nid, attr in state.nodes(data=True):
+        # state_new.nodes[nid]['nid'] = nid
+        # state_new.nodes[nid]['isNext'] = attr['isNext']
+        # state_new.nodes[nid]['isAllocated'] = attr['isAllocated']
+        # state_new.nodes[nid]['allocation'] = attr['allocation']
+        # state_new.nodes[nid]['weight'] = attr['weight']
+        # state_new.nodes[nid]['size'] = attr['size']
+        # state_new.nodes[nid]['isPhysReg'] = attr['isPhysReg']
+        # state_new.nodes[nid]['isIntReg'] = attr['isIntReg']
+        # state_new.nodes[nid]['isFloatReg'] = attr['isFloatReg']
+        state_new.nodes[nid]['allocOrder'] = attr['allocOrder'][:]
+    return state_new
+
 def move(state, reg, nid=None):
     """
     Perform move into given register. Assume the move could be performed, otherwise, assertion will be raised
@@ -117,9 +142,20 @@ def move(state, reg, nid=None):
     assert isinstance(reg, int)
     # assert 0 <= reg < len(utils.X86.F_ALL)
 
-    state_new = copy.deepcopy(state) # MUST create deep copy of the graph
+    # start = time.time()
+    # deepcopy(state)
+    # end = time.time()
+    # print("D:", end - start)
+    # start = time.time()
+    state_new = deepcopy_light(state) # MUST create deep copy of the graph
+    # end = time.time()
+    # print("S:", end - start)
     if nid is None:
         nid = get_next_node_id(state_new)
+    state_new.nnid = nid
+    assert state_new.nodes[state.nnid]['isNext'] == 1
+    state_new.nodes[state.nnid]['isNext'] = 0
+    state_new.nodes[nid]['isNext'] = 1
     state_new.nodes[nid]['isAllocated'] = 1
     state_new.nodes[nid]['allocation'] = reg
     state_new.nodes[nid]['allocOrder'] = []

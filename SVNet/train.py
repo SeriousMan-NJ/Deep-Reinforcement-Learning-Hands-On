@@ -17,14 +17,14 @@ import torch.nn.functional as F
 
 PLAY_EPISODES = 1  # TODO: 25
 MCTS_SEARCHES = 10
-MCTS_BATCH_SIZE = 8
+MCTS_BATCH_SIZE = 1
 REPLAY_BUFFER = 5000 # TODO: 30000
-LEARNING_RATE = 0.0002
-BATCH_SIZE = 16 # TODO
+LEARNING_RATE = 0.01
+BATCH_SIZE = 16
 TRAIN_ROUNDS = 10
-MIN_REPLAY_TO_TRAIN = 100 # TODO: 10000
+MIN_REPLAY_TO_TRAIN = 20 # TODO: 10000
 
-BEST_NET_WIN_RATIO = 0.60
+BEST_NET_WIN_RATIO = 0.55
 
 EVALUATE_EVERY_STEP = 100
 EVALUATION_ROUNDS = 20
@@ -32,18 +32,21 @@ STEPS_BEFORE_TAU_0 = 10
 
 
 def evaluate(net1, net2, rounds, device="cpu"):
-    n1_win, n2_win = 0, 0
+    n1_win, n2_win, draw = 0, 0, 0
     mcts_store = [mcts.MCTS(), mcts.MCTS()]
 
-    for _ in range(rounds):
+    for i in range(rounds):
         r, _ = model.play_game(mcts_store=mcts_store, replay_buffer=None, net1=net1, net2=net2,
                                steps_before_tau_0=0, mcts_searches=20, mcts_batch_size=16,
                                device=device)
+        print("Step {} (EVAL), result: {}".format(i, r))
         if r < -0.5:
             n2_win += 1
         elif r > 0.5:
             n1_win += 1
-    return n1_win / (n1_win + n2_win)
+        else:
+            draw = 1 # avoid divide-by-zero
+    return n1_win / (n1_win + n2_win + draw)
 
 
 if __name__ == "__main__":
@@ -106,16 +109,14 @@ if __name__ == "__main__":
                 probs_v = torch.FloatTensor(batch_probs).to(device)
                 values_v = torch.FloatTensor(batch_values).to(device)
                 out_logits_v, out_values_v = net(states_v)
-                # out_logits_v = torch.reshape(out_logits_v, (BATCH_SIZE, -1, allocation.NUM_PHYS))
-                # out_values_v = torch.reshape(out_values_v, (BATCH_SIZE, -1))
-                # print(out_logits_v.shape)
-                # print(out_values_v.shape)
-                # print(out_values_v.squeeze(-1).shape)
-                # print(values_v.shape)
-                # print(probs_v.shape)
+
                 loss_value_v = F.mse_loss(out_values_v.squeeze(-1), values_v)
                 loss_policy_v = -F.log_softmax(out_logits_v, dim=1) * probs_v
                 loss_policy_v = loss_policy_v.sum(dim=1).mean()
+                # print(out_values_v.squeeze(-1))
+                # print(values_v)
+                # print(out_logits_v)
+                # print(probs_v)
 
                 loss_v = loss_policy_v + loss_value_v
                 loss_v.backward()
@@ -132,7 +133,6 @@ if __name__ == "__main__":
             tb_tracker.track("loss_value", sum_value_loss / TRAIN_ROUNDS, step_idx)
             tb_tracker.track("loss_policy", sum_policy_loss / TRAIN_ROUNDS, step_idx)
 
-            # TODO
             # evaluate net
             # if step_idx % EVALUATE_EVERY_STEP == 0:
             #     win_ratio = evaluate(net, best_net.target_model, rounds=EVALUATION_ROUNDS, device=device)
@@ -144,4 +144,5 @@ if __name__ == "__main__":
             #         best_idx += 1
             #         file_name = os.path.join(saves_path, "best_%03d_%05d.dat" % (best_idx, step_idx))
             #         torch.save(net.state_dict(), file_name)
-            #         mcts_store.clear()
+            #         for s in mcts_store:
+            #             s.clear()
