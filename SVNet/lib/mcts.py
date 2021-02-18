@@ -4,6 +4,7 @@ Monte-Carlo Tree Search
 import math as m
 import time
 import numpy as np
+import time
 
 from lib import allocation, model, utils
 
@@ -91,6 +92,10 @@ class MCTS:
         return value, cur_state, states, actions
 
     def is_leaf(self, state_int):
+        start = time.time()
+        result = state_int not in self.probs
+        end = time.time()
+        print("is_leaf: {}".format(end - start))
         return state_int not in self.probs
 
     def search_batch(self, count, batch_size, state, net, device="cpu"):
