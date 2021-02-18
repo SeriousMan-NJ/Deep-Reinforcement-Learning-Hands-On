@@ -77,7 +77,10 @@ class MCTS:
             # convert
             action = model.convert_action(cur_state, action)
 
+            start = time.time()
             cur_state, spill_costs = allocation.move(cur_state, action)
+            end = time.time()
+            print(f"move: ".format(end - start))
             cur_state_int = allocation.state_to_int(cur_state)
 
             if spill_costs >= 0:
@@ -92,10 +95,6 @@ class MCTS:
         return value, cur_state, states, actions
 
     def is_leaf(self, state_int):
-        start = time.time()
-        result = state_int not in self.probs
-        end = time.time()
-        print("is_leaf: {}".format(end - start))
         return state_int not in self.probs
 
     def search_batch(self, count, batch_size, state, net, device="cpu"):
