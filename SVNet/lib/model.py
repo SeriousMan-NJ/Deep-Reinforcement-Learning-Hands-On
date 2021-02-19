@@ -85,12 +85,17 @@ class Net(nn.Module):
 
         return pol, val
 
+ConvertedStates = {}
+
 def _convert_state(state):
     """
     In-place encodes list state into the zero numpy array
     :param dest_np: dest array, expected to be zero
     :param state: state
     """
+    state_int = allocation.state_to_int(state)
+    if ConvertedStates.get(state_int, None) is not None:
+        return Data(x=torch.tensor(ConvertedStates[state_int][0]), edge_index=torch.tensor(ConvertedStates[state_int][1]))
     # assert dest_np.shape == OBS_SHAPE
     G = state
     edge_index = []
@@ -115,6 +120,9 @@ def _convert_state(state):
         x.append(nf)
     x = torch.tensor(x, dtype=torch.float32)
     edge_index = torch.tensor(np.transpose(edge_index), dtype=torch.long)
+
+    ConvertedStates[state_int] = (x, edge_index)
+
     return Data(x=x, edge_index=edge_index)
 
 def state_list_to_batch(state_list, device="cpu"):

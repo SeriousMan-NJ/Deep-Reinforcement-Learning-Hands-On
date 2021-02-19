@@ -22,7 +22,7 @@ bound = 0
 def set_node_features(G, filepath):
     global bound # TODO
     if filepath is None:
-        filepath = "/Users/ywshin/development/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/nf_bicubicKernel.txt" # TODO
+        filepath = "/home/ywshin/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/nf.txt" # TODO
     with open(filepath, "r") as f:
         lines = f.readlines()
         for l in lines:
@@ -48,7 +48,7 @@ def set_node_features(G, filepath):
 
 def add_edges(G, filepath):
     if filepath is None:
-        filepath = "/Users/ywshin/development/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/if_bicubicKernel.txt" # TODO
+        filepath = "/home/ywshin/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/if.txt" # TODO
     with open(filepath, "r") as f:
         lines = f.readlines()
         for l in lines:

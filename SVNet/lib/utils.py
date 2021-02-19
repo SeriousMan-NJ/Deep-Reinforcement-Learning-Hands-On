@@ -376,9 +376,16 @@ def is_aliased(p1, p2):
 
   return False
 
-def renumber_reg(r):
-  for i, f in enumerate(X86.F_ALL):
-    if r in f:
-      return i
+RenumberMap = [-1]*290
+for i, f in enumerate(X86.F_ALL):
+  for r in f:
+    RenumberMap[r] = i
 
-  return -1
+def renumber_reg(r):
+  return RenumberMap[r]
+
+  # for i, f in enumerate(X86.F_ALL):
+  #   if r in f:
+  #     return i
+
+  # return -1
