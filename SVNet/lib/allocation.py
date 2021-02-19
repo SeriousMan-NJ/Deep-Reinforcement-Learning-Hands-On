@@ -77,15 +77,18 @@ def get_initial_state():
     set_node_features(G, None)
     add_edges(G, None)
     nid = get_next_node_id(G)
+    G.string_id = None
     G.nnid = nid
     G.nodes[nid]['isNext'] = 1
     return G
 
 def state_to_int(G):
-    s = []
-    for _, attr in G.nodes(data=True):
-        s.append(str(attr['allocation']))
-    return ','.join(s)
+    if G.string_id is None:
+        s = []
+        for _, attr in G.nodes(data=True):
+            s.append(str(attr['allocation']))
+        G.string_id = ','.join(s)
+    return G.string_id
 
 INITIAL_STATE = get_initial_state()
 
@@ -112,10 +115,12 @@ def _get_spill_costs(G):
 
 def deepcopy(state):
     state_new = copy.deepcopy(state)
+    state_new.string_id = None
     return state_new
 
 def deepcopy_light(state):
     state_new = state.copy()
+    state_new.string_id = None
     # state_new.nnid = state.nnid
     for nid, attr in state.nodes(data=True):
         # state_new.nodes[nid]['nid'] = nid
