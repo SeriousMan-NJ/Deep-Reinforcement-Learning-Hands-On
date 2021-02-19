@@ -65,9 +65,11 @@ class MCTS:
             # choose action to take, in the root node add the Dirichlet noise to the probs
             if cur_state_int == root_state_int:
                 noises = np.random.dirichlet([0.03] * allocation.NUM_PHYS)
-                probs = [0.75 * prob + 0.25 * noise for prob, noise in zip(probs, noises)]
-            score = [value + self.c_puct * prob * total_sqrt / (1 + count)
-                     for value, prob, count in zip(values_avg, probs, counts)]
+                probs = probs + noises
+                # probs = [0.75 * prob + 0.25 * noise for prob, noise in zip(probs, noises)]
+            # score = [value + self.c_puct * prob * total_sqrt / (1 + count)
+            #          for value, prob, count in zip(values_avg, probs, counts)]
+            score = values_avg + self.c_puct * probs * total_sqrt / (1 + counts)
             invalid_actions = set(range(len(utils.X86.F_ALL))) - set(allocation.possible_moves(cur_state))
             for invalid in invalid_actions:
                 score[invalid] = -np.inf
@@ -136,9 +138,9 @@ class MCTS:
             # create the nodes
             for (leaf_state, states, actions), value, prob in zip(expand_queue, values, probs):
                 leaf_state_int = allocation.state_to_int(leaf_state)
-                self.visit_count[leaf_state_int] = [0] * allocation.NUM_PHYS
-                self.value[leaf_state_int] = [0.0] * allocation.NUM_PHYS
-                self.value_avg[leaf_state_int] = [0.0] * allocation.NUM_PHYS
+                self.visit_count[leaf_state_int] = np.array([0] * allocation.NUM_PHYS)
+                self.value[leaf_state_int] = np.array([0.0] * allocation.NUM_PHYS)
+                self.value_avg[leaf_state_int] = np.array([0.0] * allocation.NUM_PHYS)
                 self.probs[leaf_state_int] = prob
                 backup_queue.append((value, states, actions))
 
