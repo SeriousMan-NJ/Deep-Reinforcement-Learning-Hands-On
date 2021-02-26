@@ -95,7 +95,7 @@ def _convert_state(state):
     """
     state_int = allocation.state_to_int(state)
     if ConvertedStates.get(state_int, None) is not None:
-        return Data(x=torch.tensor(ConvertedStates[state_int][0]), edge_index=torch.tensor(ConvertedStates[state_int][1]))
+        return Data(x=ConvertedStates[state_int][0].clone().detach(), edge_index=ConvertedStates[state_int][1].clone().detach())
     # assert dest_np.shape == OBS_SHAPE
     G = state
     edge_index = []
