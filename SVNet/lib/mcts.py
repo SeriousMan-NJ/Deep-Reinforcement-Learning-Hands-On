@@ -10,7 +10,6 @@ from lib import allocation, model, utils
 
 import torch.nn.functional as F
 
-from concurrent import futures
 
 class MCTS:
     """
@@ -109,21 +108,21 @@ class MCTS:
         expand_states = []
         expand_queue = []
         planned = set()
-
-        with futures.ProcessPoolExecutor() as pex:
-            tasks = [pex.submit(self.find_leaf, state) for _ in range(count)]
-            for f in futures.as_completed(tasks):
-                value, leaf_state, states, actions = f.result()
-                leaf_state_int = allocation.state_to_int(leaf_state)
-                if leaf_state_int not in self.visited_states:
-                    self.visited_states.add(leaf_state_int)
-                if value is not None:
-                    backup_queue.append((value, states, actions))
-                else:
-                    if leaf_state_int not in planned:
-                        planned.add(leaf_state_int)
-                        expand_states.append(leaf_state)
-                        expand_queue.append((leaf_state, states, actions))
+        for _ in range(count):
+            # start = time.time()
+            value, leaf_state, states, actions = self.find_leaf(state)
+            # end = time.time()
+            # print("find_leaf: {}".format(end - start))
+            leaf_state_int = allocation.state_to_int(leaf_state)
+            if leaf_state_int not in self.visited_states:
+                self.visited_states.add(leaf_state_int)
+            if value is not None:
+                backup_queue.append((value, states, actions))
+            else:
+                if leaf_state_int not in planned:
+                    planned.add(leaf_state_int)
+                    expand_states.append(leaf_state)
+                    expand_queue.append((leaf_state, states, actions))
 
         # do expansion of nodes
         if len(expand_queue) > 0:

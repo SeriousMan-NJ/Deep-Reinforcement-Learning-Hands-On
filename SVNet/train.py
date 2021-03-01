@@ -18,14 +18,14 @@ from torch import multiprocessing
 import traceback
 
 
-PLAY_EPISODES = 64  # TODO: 25
-MCTS_SEARCHES = 2 # TODO 10
-MCTS_BATCH_SIZE = 8 # TODO: 8
+PLAY_EPISODES = 8 # TODO: larger
+MCTS_SEARCHES = 2 # TODO: 10
+MCTS_BATCH_SIZE = 8
 REPLAY_BUFFER = 1000000
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.05
 BATCH_SIZE = 16
-TRAIN_ROUNDS = 100
-MIN_REPLAY_TO_TRAIN = 20 # TODO: 10000
+TRAIN_ROUNDS = 10
+MIN_REPLAY_TO_TRAIN = 100 # TODO: 10000
 
 BEST_NET_WIN_RATIO = 0.55
 
@@ -58,6 +58,7 @@ def evaluate(net1, net2, rounds, device="cpu"):
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn')
     manager = multiprocessing.Manager()
 
     parser = argparse.ArgumentParser()
@@ -141,6 +142,13 @@ if __name__ == "__main__":
                 # print(probs_v)
 
                 loss_v = loss_policy_v + loss_value_v
+
+                l2_lambda = 1e-4
+                l2_reg = torch.tensor(0.).to(device)
+                for param in net.parameters():
+                    l2_reg += torch.norm(param)
+                loss_v += l2_lambda * l2_reg
+
                 loss_v.backward()
                 optimizer.step()
                 sum_loss += loss_v.item()
@@ -173,3 +181,8 @@ if __name__ == "__main__":
                 s.clear()
 
             allocation.change_file_index()
+
+            if step_idx > 20:
+                optimizer = optim.SGD(net.parameters(), lr=LEARNING_RATE*0.1, momentum=0.9)
+            if step_idx > 1000:
+                optimizer = optim.SGD(net.parameters(), lr=LEARNING_RATE*0.01, momentum=0.9)
