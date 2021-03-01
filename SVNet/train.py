@@ -17,7 +17,7 @@ import torch.nn.functional as F
 
 PLAY_EPISODES = 1  # TODO: 25
 MCTS_SEARCHES = 2 # TODO 10
-MCTS_BATCH_SIZE = 1 # TODO: 8
+MCTS_BATCH_SIZE = 8 # TODO: 8
 REPLAY_BUFFER = 1000000
 LEARNING_RATE = 0.01
 BATCH_SIZE = 16
@@ -45,9 +45,10 @@ def evaluate(net1, net2, rounds, device="cpu"):
             n2_win += 1
         elif r > 0.5:
             n1_win += 1
-        else:
-            draw = 1 # avoid divide-by-zero
-    return n1_win / (n1_win + n2_win + draw)
+        if n1_win + n2_win == 0:
+            return 0
+
+    return n1_win / (n1_win + n2_win)
 
 
 if __name__ == "__main__":
