@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, MFConv, global_add_pool, global_mean_pool
+from torch_geometric.nn import GCNConv, MFConv, global_add_pool, global_mean_pool, global_max_pool
 from torch_geometric.utils import from_networkx
 from torch_geometric.data import Data, DataLoader
 import math
@@ -27,6 +27,19 @@ class Net(nn.Module):
         self.conv_5 = GCNConv(NUM_FILTERS, NUM_FILTERS)
         self.conv_6 = GCNConv(NUM_FILTERS, NUM_FILTERS)
         self.conv_7 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_8 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_9 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_10 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_11 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_12 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_13 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_14 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_15 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_16 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_17 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_18 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_19 = GCNConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_20 = GCNConv(NUM_FILTERS, NUM_FILTERS)
 
         self.conv_val = MFConv(NUM_FILTERS, NUM_FILTERS)
         self.value = nn.Sequential(
@@ -70,17 +83,55 @@ class Net(nn.Module):
         x = self.conv_7(x, edge_index)
         x = F.relu(x)
         x = F.dropout(x, training=self.training)
+        x = self.conv_8(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_9(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_10(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_11(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_12(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_13(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_14(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_15(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_16(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_17(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_18(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv_19(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
 
         val = self.conv_val(x, edge_index)
         val = F.relu(val)
         val = F.dropout(val, training=self.training)
-        val = global_add_pool(val, data.batch)
+        val = global_max_pool(val, data.batch)
+        val = F.relu(val)
         val = self.value(val)
 
         pol = self.conv_policy(x, edge_index)
         pol = F.relu(pol)
         pol = F.dropout(pol, training=self.training)
         pol = global_mean_pool(pol, data.batch)
+        val = F.relu(val)
         pol = self.policy(pol)
 
         return pol, val
@@ -116,7 +167,8 @@ def _convert_state(state):
         nf[3 + allocation.NUM_PHYS] = G.nodes[N]['isPhysReg']
         nf[4 + allocation.NUM_PHYS] = G.nodes[N]['isIntReg']
         nf[5 + allocation.NUM_PHYS] = G.nodes[N]['isFloatReg']
-        nf[6 + allocation.NUM_PHYS] = G.nodes[N]['isNext']
+        nf[6 + allocation.NUM_PHYS] = G.nodes[N]['isVecReg']
+        nf[7 + allocation.NUM_PHYS] = G.nodes[N]['isNext']
         x.append(nf)
     x = torch.tensor(x, dtype=torch.float32)
     edge_index = torch.tensor(np.transpose(edge_index), dtype=torch.long)
@@ -168,7 +220,9 @@ def play_game(mcts_store, replay_buffer, net1, net2, steps_before_tau_0, mcts_se
     if mcts_store is None:
         mcts_store = [mcts.MCTS(), mcts.MCTS()]
 
-    states = [allocation.INITIAL_STATE, allocation.INITIAL_STATE] # TODO
+    initial_state = allocation.get_initial_state()
+    # states = [allocation.INITIAL_STATE, allocation.INITIAL_STATE] # TODO
+    states = [initial_state, initial_state] # TODO
 
     step = 0
     tau = 1 if steps_before_tau_0 > 0 else 0

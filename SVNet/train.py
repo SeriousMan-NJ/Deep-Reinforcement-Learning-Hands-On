@@ -16,7 +16,7 @@ import torch.nn.functional as F
 
 
 PLAY_EPISODES = 1  # TODO: 25
-MCTS_SEARCHES = 10
+MCTS_SEARCHES = 2 # TODO 10
 MCTS_BATCH_SIZE = 1 # TODO: 8
 REPLAY_BUFFER = 5000 # TODO: 30000
 LEARNING_RATE = 0.01
@@ -26,18 +26,19 @@ MIN_REPLAY_TO_TRAIN = 20 # TODO: 10000
 
 BEST_NET_WIN_RATIO = 0.55
 
-EVALUATE_EVERY_STEP = 100
-EVALUATION_ROUNDS = 20
+EVALUATE_EVERY_STEP = 10 # TODO: 200
+EVALUATION_ROUNDS = 8 # TODO: 20
 STEPS_BEFORE_TAU_0 = 10
 
 
 def evaluate(net1, net2, rounds, device="cpu"):
     n1_win, n2_win, draw = 0, 0, 0
-    mcts_store = [mcts.MCTS(), mcts.MCTS()]
 
     for i in range(rounds):
+        allocation.change_file_index()
+        mcts_store = [mcts.MCTS(), mcts.MCTS()]
         r, _ = model.play_game(mcts_store=mcts_store, replay_buffer=None, net1=net1, net2=net2,
-                               steps_before_tau_0=0, mcts_searches=20, mcts_batch_size=16,
+                               steps_before_tau_0=0, mcts_searches=2, mcts_batch_size=1,
                                device=device)
         print("Step {} (EVAL), result: {}".format(i, r))
         if r < -0.5:
@@ -67,12 +68,14 @@ if __name__ == "__main__":
     optimizer = optim.SGD(net.parameters(), lr=LEARNING_RATE, momentum=0.9)
 
     replay_buffer = collections.deque(maxlen=REPLAY_BUFFER)
-    mcts_store = [mcts.MCTS(), mcts.MCTS()]
     step_idx = 0
     best_idx = 0
 
     with ptan.common.utils.TBMeanTracker(writer, batch_size=10) as tb_tracker:
         while True:
+            print(allocation.Files[allocation.File_index])
+            mcts_store = [mcts.MCTS(), mcts.MCTS()]
+
             t = time.time()
             prev_nodes = len(mcts_store[0])
             game_steps = 0
@@ -111,8 +114,10 @@ if __name__ == "__main__":
                 out_logits_v, out_values_v = net(states_v)
 
                 loss_value_v = F.mse_loss(out_values_v.squeeze(-1), values_v)
+
                 loss_policy_v = -F.log_softmax(out_logits_v, dim=1) * probs_v
                 loss_policy_v = loss_policy_v.sum(dim=1).mean()
+
                 # print(out_values_v.squeeze(-1))
                 # print(values_v)
                 # print(out_logits_v)
@@ -134,15 +139,20 @@ if __name__ == "__main__":
             tb_tracker.track("loss_policy", sum_policy_loss / TRAIN_ROUNDS, step_idx)
 
             # evaluate net
-            # if step_idx % EVALUATE_EVERY_STEP == 0:
-            #     win_ratio = evaluate(net, best_net.target_model, rounds=EVALUATION_ROUNDS, device=device)
-            #     print("Net evaluated, win ratio = %.2f" % win_ratio)
-            #     writer.add_scalar("eval_win_ratio", win_ratio, step_idx)
-            #     if win_ratio > BEST_NET_WIN_RATIO:
-            #         print("Net is better than cur best, sync")
-            #         best_net.sync()
-            #         best_idx += 1
-            #         file_name = os.path.join(saves_path, "best_%03d_%05d.dat" % (best_idx, step_idx))
-            #         torch.save(net.state_dict(), file_name)
-            #         for s in mcts_store:
-            #             s.clear()
+            if step_idx % EVALUATE_EVERY_STEP == 0:
+                win_ratio = evaluate(net, best_net.target_model, rounds=EVALUATION_ROUNDS, device=device)
+                print("Net evaluated, win ratio = %.2f" % win_ratio)
+                writer.add_scalar("eval_win_ratio", win_ratio, step_idx)
+                if win_ratio > BEST_NET_WIN_RATIO:
+                    print("Net is better than cur best, sync")
+                    best_net.sync()
+                    best_idx += 1
+                    file_name = os.path.join(saves_path, "best_%03d_%05d.dat" % (best_idx, step_idx))
+                    torch.save(net.state_dict(), file_name)
+                    # for s in mcts_store:
+                    #     s.clear()
+
+            for s in mcts_store:
+                s.clear()
+
+            allocation.change_file_index()

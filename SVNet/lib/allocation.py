@@ -6,23 +6,49 @@ from lib import utils
 import math
 import copy
 import time
+import os
+import random
 
 NUM_PHYS = len(utils.X86.F_ALL)
-# isAllocated, weight, size, isPhysReg, isIntReg, isFloatReg, isNext
+# isAllocated, weight, size, isPhysReg, isIntReg, isFloatReg, isVecReg, isNext
 # allocation: NUM_PHYS
-NUM_NODE_FEATURES = 7 + NUM_PHYS
+NUM_NODE_FEATURES = 8 + NUM_PHYS
 
 WIN = 0
 LOSE = 1
 DRAW = 2
 
 NodeMap = {}
-bound = 0
+
+Files = []
+
+def _init_files():
+    DIR = "/home/ywshin/Deep-Reinforcement-Learning-Hands-On/SVNet/data"
+    ALL = [
+        os.path.join(DIR, "600.perlbench_s_filtered"),
+        os.path.join(DIR, "602.gcc_s_filtered"),
+        os.path.join(DIR, "605.mcf_s_filtered"),
+        os.path.join(DIR, "620.omnetpp_s_filtered"),
+        os.path.join(DIR, "623.xalancbmk_s_filtered"),
+        os.path.join(DIR, "625.x264_s_filtered"),
+        os.path.join(DIR, "631.deepsjeng_s_filtered"),
+        os.path.join(DIR, "641.leela_s_filtered"),
+        # os.path.join(DIR, "648.exchange2_s_filtered"),
+        os.path.join(DIR, "657.xz_s_filtered"),
+        os.path.join(DIR, "998.specrand_is_filtered"),
+    ]
+    for p in ALL:
+        Files.extend([os.path.join(p, name) for name in os.listdir(p) if os.path.isfile(os.path.join(p, name))])
+
+_init_files()
+
+def get_file_index():
+    return random.randrange(len(Files))
 
 def set_node_features(G, filepath):
-    global bound # TODO
-    if filepath is None:
-        filepath = "/home/ywshin/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/nf.txt" # TODO
+    bound = 0
+    if filepath not in NodeMap:
+        NodeMap[filepath[:-7]] = {}
     with open(filepath, "r") as f:
         lines = f.readlines()
         for l in lines:
@@ -30,10 +56,10 @@ def set_node_features(G, filepath):
             if len(l) < 2:
                 break
             nid = int(features[0])
-            if nid not in NodeMap:
-                NodeMap[nid] = bound
+            if nid not in NodeMap[filepath[:-7]]:
+                NodeMap[filepath[:-7]][nid] = bound
                 bound += 1
-            G.add_node(NodeMap[nid],
+            G.add_node(NodeMap[filepath[:-7]][nid],
                 nid=nid,
                 isNext=0,
                 isAllocated = int(features[1]),
@@ -43,17 +69,16 @@ def set_node_features(G, filepath):
                 isPhysReg = int(features[5]),
                 isIntReg = int(features[6]),
                 isFloatReg = int(features[7]),
-                allocOrder = list(map(lambda x: int(x), features[8].split()))
+                isVecReg = int(features[8]),
+                allocOrder = list(map(lambda x: int(x), features[9].split()))
             )
 
 def add_edges(G, filepath):
-    if filepath is None:
-        filepath = "/home/ywshin/Deep-Reinforcement-Learning-Hands-On/SVNet/tests/if.txt" # TODO
     with open(filepath, "r") as f:
         lines = f.readlines()
         for l in lines:
-            node = NodeMap[int(l.split()[0])]
-            edges = list(map(lambda x: NodeMap[int(x)], l.split()[1:]))
+            node = NodeMap[filepath[:-7]][int(l.split()[0])]
+            edges = list(map(lambda x: NodeMap[filepath[:-7]][int(x)], l.split()[1:]))
             if len(edges) < 1:
                 continue
             for e in edges:
@@ -72,10 +97,31 @@ def get_next_node_id(G):
 
     return N
 
+File_index = 0
+def change_file_index():
+    global File_index
+    File_index = get_file_index()
+
 def get_initial_state():
+    while True:
+        filepath = Files[File_index]
+        n = sum(1 for line in open(filepath))
+        if n > 200:
+            change_file_index()
+            continue
+        else:
+            break
+    nf_filepath = filepath.split('.')
+    nf_filepath[-2] = 'nf'
+    nf_filepath = '.'.join(nf_filepath)
+
+    if_filepath = filepath.split('.')
+    if_filepath[-2] = 'if'
+    if_filepath = '.'.join(if_filepath)
+
     G = nx.Graph()
-    set_node_features(G, None)
-    add_edges(G, None)
+    set_node_features(G, nf_filepath)
+    add_edges(G, if_filepath)
     nid = get_next_node_id(G)
     G.string_id = None
     G.nnid = nid
@@ -121,17 +167,7 @@ def deepcopy(state):
 def deepcopy_light(state):
     state_new = state.copy()
     state_new.string_id = None
-    # state_new.nnid = state.nnid
     for nid, attr in state.nodes(data=True):
-        # state_new.nodes[nid]['nid'] = nid
-        # state_new.nodes[nid]['isNext'] = attr['isNext']
-        # state_new.nodes[nid]['isAllocated'] = attr['isAllocated']
-        # state_new.nodes[nid]['allocation'] = attr['allocation']
-        # state_new.nodes[nid]['weight'] = attr['weight']
-        # state_new.nodes[nid]['size'] = attr['size']
-        # state_new.nodes[nid]['isPhysReg'] = attr['isPhysReg']
-        # state_new.nodes[nid]['isIntReg'] = attr['isIntReg']
-        # state_new.nodes[nid]['isFloatReg'] = attr['isFloatReg']
         state_new.nodes[nid]['allocOrder'] = attr['allocOrder'][:]
     return state_new
 
@@ -147,14 +183,8 @@ def move(state, reg, nid=None):
     assert isinstance(reg, int)
     # assert 0 <= reg < len(utils.X86.F_ALL)
 
-    # start = time.time()
-    # deepcopy(state)
-    # end = time.time()
-    # print("D:", end - start)
-    # start = time.time()
     state_new = deepcopy_light(state) # MUST create deep copy of the graph
-    # end = time.time()
-    # print("S:", end - start)
+
     if nid is None:
         nid = get_next_node_id(state_new)
     state_new.nnid = nid
