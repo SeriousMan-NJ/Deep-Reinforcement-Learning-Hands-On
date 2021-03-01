@@ -41,7 +41,8 @@ class Net(nn.Module):
         self.conv_19 = GCNConv(NUM_FILTERS, NUM_FILTERS)
         self.conv_20 = GCNConv(NUM_FILTERS, NUM_FILTERS)
 
-        self.conv_val = MFConv(NUM_FILTERS, NUM_FILTERS)
+        # self.conv_val = MFConv(NUM_FILTERS, NUM_FILTERS)
+        self.conv_val = GCNConv(NUM_FILTERS, NUM_FILTERS)
         self.value = nn.Sequential(
             nn.Linear(NUM_FILTERS, 20),
             nn.ReLU(),
@@ -209,7 +210,7 @@ def play_game(mcts_store, replay_buffer, net1, net2, steps_before_tau_0, mcts_se
     :param net: allocator
     :return: value for the allocation in respect to allocator (+1 if allocator won, -1 if lost, 0 if draw)
     """
-    assert isinstance(replay_buffer, (collections.deque, type(None)))
+    # assert isinstance(replay_buffer, (collections.deque, type(None)))
     assert isinstance(mcts_store, (mcts.MCTS, type(None), list))
     assert isinstance(net1, Net)
     assert isinstance(net2, Net)

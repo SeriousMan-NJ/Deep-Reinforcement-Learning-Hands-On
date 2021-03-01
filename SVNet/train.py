@@ -14,25 +14,30 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 
+from torch import multiprocessing
+import traceback
 
-PLAY_EPISODES = 1  # TODO: 25
+
+PLAY_EPISODES = 64  # TODO: 25
 MCTS_SEARCHES = 2 # TODO 10
 MCTS_BATCH_SIZE = 8 # TODO: 8
 REPLAY_BUFFER = 1000000
 LEARNING_RATE = 0.01
 BATCH_SIZE = 16
-TRAIN_ROUNDS = 10
+TRAIN_ROUNDS = 100
 MIN_REPLAY_TO_TRAIN = 20 # TODO: 10000
 
 BEST_NET_WIN_RATIO = 0.55
 
 EVALUATE_EVERY_STEP = 10 # TODO: 200
-EVALUATION_ROUNDS = 8 # TODO: 20
+EVALUATION_ROUNDS = 10 # TODO: 20
 STEPS_BEFORE_TAU_0 = 10
 
+def error_callback(e):
+    traceback.print_exception(type(e), e, e.__traceback__)
 
 def evaluate(net1, net2, rounds, device="cpu"):
-    n1_win, n2_win, draw = 0, 0, 0
+    n1_win, n2_win = 0, 0
 
     for i in range(rounds):
         allocation.change_file_index()
@@ -45,13 +50,16 @@ def evaluate(net1, net2, rounds, device="cpu"):
             n2_win += 1
         elif r > 0.5:
             n1_win += 1
-        if n1_win + n2_win == 0:
-            return 0
+
+    if n1_win + n2_win == 0:
+        return 0
 
     return n1_win / (n1_win + n2_win)
 
 
 if __name__ == "__main__":
+    manager = multiprocessing.Manager()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--name", required=True, help="Name of the run")
     parser.add_argument("--cuda", default=False, action="store_true", help="Enable CUDA")
@@ -74,25 +82,33 @@ if __name__ == "__main__":
 
     with ptan.common.utils.TBMeanTracker(writer, batch_size=10) as tb_tracker:
         while True:
+            pool = multiprocessing.Pool(PLAY_EPISODES)
+            rb = manager.list()
             print(allocation.Files[allocation.File_index])
             mcts_store = [mcts.MCTS(), mcts.MCTS()]
 
             t = time.time()
             prev_nodes = len(mcts_store[0])
             game_steps = 0
-            for _ in range(PLAY_EPISODES):
-                _, steps = model.play_game(mcts_store, replay_buffer, best_net.target_model, best_net.target_model,
-                                           steps_before_tau_0=STEPS_BEFORE_TAU_0, mcts_searches=MCTS_SEARCHES,
-                                           mcts_batch_size=MCTS_BATCH_SIZE, device=device)
-                game_steps += steps
+            for i in range(PLAY_EPISODES):
+                pool.apply_async(model.play_game, args=(None, rb, best_net.target_model, best_net.target_model,
+                                STEPS_BEFORE_TAU_0, MCTS_SEARCHES, MCTS_BATCH_SIZE, device), error_callback=error_callback)
+                # _, steps = model.play_game(mcts_store, replay_buffer, best_net.target_model, best_net.target_model,
+                #                            steps_before_tau_0=STEPS_BEFORE_TAU_0, mcts_searches=MCTS_SEARCHES,
+                #                            mcts_batch_size=MCTS_BATCH_SIZE, lock=lock, device=device)
+                # game_steps += steps
+            pool.close()
+            pool.join()
+
+            replay_buffer += rb
+
             game_nodes = len(mcts_store[0]) - prev_nodes
             dt = time.time() - t
             speed_steps = game_steps / dt
             speed_nodes = game_nodes / dt
             tb_tracker.track("speed_steps", speed_steps, step_idx)
             tb_tracker.track("speed_nodes", speed_nodes, step_idx)
-            print("Step %d, steps %3d, leaves %4d, steps/s %5.2f, leaves/s %6.2f, best_idx %d, replay %d" % (
-                step_idx, game_steps, game_nodes, speed_steps, speed_nodes, best_idx, len(replay_buffer)))
+            print("Step %d, best_idx %d, replay %d" % (step_idx, best_idx, len(replay_buffer)))
             step_idx += 1
 
             if len(replay_buffer) < MIN_REPLAY_TO_TRAIN:
